@@ -1,0 +1,286 @@
+---
+title: "Join Lab"
+author: "Dr. Shoemaker"
+date: "DATA 2401"
+output: html_document
+---
+
+
+# Joins and `dplyr` practice
+
+## Dataset 1
+
+We start by making some "healthcare" data: 
+
+```{r}
+library(tidyverse, quietly = T) ## should be at the top, sorry! 
+# Patients table
+patients <- tibble(
+  patient_id = c(1, 2, 3, 4),
+  name = c("Alice", "Bob", "Charlie", "David"),
+  age = c(25, 40, 35, 50),
+  sex = c("F", "M", "F", "M")
+)
+
+# Visits table (Some patients have multiple visits, some missing)
+visits <- tibble(
+  visit_id = c(101, 102, 103, 104, 105),
+  patient_id = c(1, 2, 2, 3, 5),  
+  doctor_id = c(201, 202, 201, 203, 204),
+  visit_date = as.Date(c("2024-01-10", "2024-01-12", "2024-02-15", "2024-03-01", "2024-03-10"))
+)
+
+# Doctors table (Some doctors may not have treated any patients)
+doctors <- tibble(
+  doctor_id = c(201, 202, 203, 205),
+  doctor_name = c("Dr. Smith", "Dr. Johnson", "Dr. Lee", "Dr. Brown"),
+  specialty = c("Cardiology", "Neurology", "Pediatrics", "Orthopedics")
+)
+
+```
+
+Questions: 
+
+- Find the names of patients who have visited the hospital. 
+- Show all patients visit information, even if they haven't visited the hospital
+- List all the visits and patient information, even if there isn't information for the patient
+- Show all visits with their assigned doctors.
+- Find the doctor(s) that Bob has met with. 
+- Find patients that haven't visited the hospital
+
+```{r}
+# Find the names of patients who have visited the hospital. 
+left_join(visits, patients) %>% select(name) %>% distinct()
+inner_join(patients, visits)
+semi_join(patients, visits)
+
+# Show all patients visit information, even if they haven't visited the hospital
+left_join(patients, visits) # shows all patients, even without visits
+
+# List all the visits and patient information, even if there isn't information for the patient
+left_join(visits, patients)
+right_join(patients, visits)
+
+# Show all visits with their assigned doctors.
+left_join(visits, doctors)
+
+# Find the doctor(s) that Bob has met with. 
+left_join(patients, visits) %>% left_join(doctors) %>% filter(name == "Bob")
+
+# Find patients that haven't visited the hospital
+anti_join(patients, visits)
+
+```
+
+## Dataset 2
+
+Load the `"nycflights13"` package.  You'll also need to load `dplyr` or `tidyverse`, if you didn't above.
+
+```{r}
+# library(tidyverse) -- moved above
+#install.packages("nycflights13")
+library(nycflights13)
+my_flights <- flights # store my own version
+my_flights <- na.omit(my_flights) ## this dataset has data on cancelled flights too, 
+                                  ## so we 'll remove those for now
+
+```
+
+
+Create a dataframe of the average arrival delays for each _destination_
+
+```{r}
+delay_by_dest <- my_flights %>% 
+  group_by(dest) %>% 
+  summarise(avg_arr_delay = mean(arr_delay))
+
+```
+
+Then use `left_join()` to join on the "airports" dataframe, which has the airport information.
+
+```{r}
+## join my_flights with the airports dataframe
+## need to check and see what the variable names are that I need to match
+glimpse(airports)
+glimpse(delay_by_dest)
+
+
+delay_by_dest %>% 
+  inner_join(airports, join_by(dest == faa)) %>% 
+  select(name, avg_arr_delay) %>% 
+  arrange(-avg_arr_delay)
+
+```
+
+
+
+Which airport had the largest average arrival delay?
+
+```{r}
+delay_by_dest %>% 
+  inner_join(airports, join_by(dest == faa)) %>% 
+  select(name, avg_arr_delay) %>% 
+  slice_max(avg_arr_delay)
+```
+
+
+
+What is the average departure delay for each airline? To answer this with something more than just the FAA code of the airline name, you need to create a dataframe of the average departure delay for each _airline_, then use `left_join()` to join on the "airlines" dataframe
+
+
+```{r}
+glimpse(airlines)
+
+my_flights %>% 
+  group_by(carrier) %>% 
+  summarise(avg_dep_delay = mean(dep_delay)) %>% 
+  left_join(airlines, join_by(carrier)) %>% 
+  select(name, avg_dep_delay) %>% 
+  arrange(-avg_dep_delay)
+
+```
+
+
+Which airline had the smallest average departure delay? 
+
+
+
+```{r}
+my_flights %>% 
+  group_by(carrier) %>% 
+  summarise(avg_dep_delay = mean(dep_delay)) %>% 
+  left_join(airlines, join_by(carrier)) %>% 
+  select(name, avg_dep_delay) %>% 
+  arrange(avg_dep_delay)
+
+```
+
+
+Add origin and destination airport names (two joins to the same table)
+Question: Which origin–destination pair has the highest average arrival delay?
+
+
+```{r}
+left_join(my_flights, airports, join_by(dest == faa)) %>% 
+  left_join(airports, join_by(origin == faa))  %>%  ## if you look at this result, you can see `name.x` and `name.y`
+  group_by(name.x, name.y) %>% 
+  summarise(avg_arr_delay = mean(arr_delay)) %>% 
+  slice_max(avg_arr_delay)
+## umm... why isn't it slicing?!
+## nuanced thing here - there is still grouping! 
+  
+
+## gotta take it out to actually get the largest overall
+left_join(my_flights, airports, join_by(dest == faa)) %>% 
+  left_join(airports, join_by(origin == faa))  %>%  ## if you look at this result, you can see `name.x` and `name.y`
+  group_by(name.x, name.y) %>% 
+  summarise(avg_arr_delay = mean(arr_delay), .groups = "drop") %>% 
+  slice_max(avg_arr_delay)
+## this is also true for the above questions, if you chose to do slice_max instead of arranging by that computed variable
+
+``` 
+
+Another thing to consider: naming the columns better
+
+```{r}
+left_join(my_flights, airports, join_by(dest == faa)) %>% 
+  left_join(airports, join_by(origin == faa))  %>%  ## if you look at this result, you can see `name.x` and `name.y`
+  ## dest was joined on first, so the name.x is the one for dest, name.y is for the origin
+    ## when you join and there are columns with the same name that you aren't using as the join, it gives you col.x and col.y for the x and y dfs
+  ## you can also see this for the airports themselves
+  select(dest_name = name.x, origin_name = name.y, everything()) %>% 
+  group_by(dest_name, origin_name) %>% 
+  summarise(avg_arr_delay = mean(arr_delay)) %>% 
+  arrange(-avg_arr_delay)
+## and now our table is a little more human-readable
+```
+
+Which airline (name) has the highest on-time rate? Are left_join and inner_join returning the same rows here? Why?
+
+
+```{r}
+
+## to get on time rate - make an flag for "ontime", however you decide that to be. 
+my_flights %>% 
+  mutate(on_time = arr_delay <= 0) %>% 
+  group_by(carrier) %>% 
+  summarise(on_time_rate = mean(on_time),  # OR
+            on_time_rate2 = sum(on_time)/n())
+
+
+## left join
+my_flights %>% 
+  mutate(on_time = arr_delay <= 0) %>% 
+  group_by(carrier) %>% 
+  summarise(on_time_rate = mean(on_time),  # OR
+            on_time_rate2 = sum(on_time)/n()) %>% 
+  left_join(airlines, join_by(carrier)) %>% 
+  select(name, on_time_rate, on_time_rate2) %>% 
+  arrange(on_time_rate)
+
+## inner join
+my_flights %>% 
+  mutate(on_time = arr_delay <= 0) %>% 
+  group_by(carrier) %>% 
+  summarise(on_time_rate = mean(on_time),  # OR
+            on_time_rate2 = sum(on_time)/n()) %>% 
+  inner_join(airlines, join_by(carrier)) %>% 
+  select(name, on_time_rate, on_time_rate2) %>% 
+  arrange(on_time_rate)
+```
+
+The are the same! this means that every carrier exists in our lookup table 
+
+Plane metadata join: age of aircraft vs. delays
+Among aircraft with at least 50 flights, which tailnumber has the largest average arrival delay, and what are the manufacturer/model and age?
+
+
+```{r}
+
+my_flights %>% 
+  group_by(tailnum) %>% 
+  mutate(n_flights = n()) %>% 
+  filter(n_flights >= 50) %>% 
+  summarise(avg_arr_delay = mean(arr_delay),
+            n_flights = max(n_flights)) %>% # don't need this, but leaving in for reference
+  left_join(planes) %>% 
+  slice_max(avg_arr_delay) %>% 
+  select(tailnum, avg_arr_delay, n_flights, manufacturer, model)
+
+```
+
+## Extra Examples from R4DS:    
+
+```{r}
+
+# make a df of the top 10 destinations from NYC
+top_dest <- flights %>%
+  count(dest, sort = TRUE) %>%
+  head(10)
+top_dest
+
+```
+
+Now you want to find each flight that went to one of those destinations. You could, of course, filter. But! Now you can semi-join: 
+
+```{r}
+flights %>% 
+  semi_join(top_dest)
+```
+
+
+What does anti_join(flights, airports, by = c("dest" = "faa")) tell you? What does anti_join(airports, flights, by = c("faa" = "dest")) tell you?
+Perform the two joins below and consider what the results **are**. 
+
+```{r}
+anti_join(flights, airports, by = c("dest" = "faa"))
+## literally: flights where the destination isn't in the faa lookup table
+## intuition: it's not like these are in the twilight zone. It's a list of flights that are to airports that aren't stored in this particular lookup table.
+# ...To see which ones: 
+anti_join(flights, airports, by = c("dest" = "faa")) %>% 
+  select(dest) %>% distinct()
+
+anti_join(airports, flights, by = c("faa" = "dest")) 
+## literally: airports where there isn't a flight that goes there. 
+## intuition: a list of airports that NYC doesn't have flights to
+```
