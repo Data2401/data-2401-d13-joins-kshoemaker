@@ -13,6 +13,7 @@ output: html_document
 We start by making some "healthcare" data: 
 
 ```{r}
+library(tidyverse) ## add this line! (and fix line 98)
 # Patients table
 patients <- tibble(
   patient_id = c(1, 2, 3, 4),
@@ -48,6 +49,30 @@ Questions:
 - Find patients that haven't visited the hospital
 
 ```{r}
+# - Find the names of patients who have visited the hospital. 
+semi_join(patients, visits) |> select(name)
+
+# - Show all patients' visit information, even if they haven't visited the hospital
+left_join(patients, visits) 
+
+# - List all the visits with their patient information, even if there isn't information for the patient
+left_join(visits, patients)
+## or 
+right_join(patients, visits)
+
+# - Show all visits with their assigned doctors.
+left_join(visits, doctors, join_by(doctor_id)) ## do I need this join_by? no. 
+
+# - Find the doctor(s) that Bob has met with. 
+## this one needs two joins! 
+## how do I get this!? I need Bob's name, his visits, and the doctors for each visit. 
+left_join(patients, visits) |> 
+  filter(name == "Bob") |>  ## take the result and filter to only Bob
+  left_join(doctors) |>  ## join this new "only bob visits" data with the matching doctors
+  select(doctor_name)  ## only show the doctor vector
+
+# - Find patients that haven't visited the hospital
+anti_join(patients, visits)
 
 ```
 
@@ -69,22 +94,26 @@ my_flights <- na.omit(my_flights) ## this dataset has data on cancelled flights 
 Create a dataframe of the average arrival delays for each _destination_
 
 ```{r}
-
+avg_arr_delay_df <- my_flights |> 
+  group_by(dest) |> 
+  summarise(avg_arr_delay = mean(arr_delay)) |> 
+  arrange(-avg_arr_delay)
 ```
 
 Then use `left_join()` to join on the "airports" dataframe, which has the airport information.
 
 ```{r}
-
+data("airports") # this will put the data in your environment (optional)
+left_join(avg_arr_delay_df, airports, join_by(dest == faa)) |> select(avg_arr_delay, name)
 ```
-
-
 Note here: the column names don't match anymore! 
 
 Which airport had the largest average arrival delay?
 
 ```{r}
-
+left_join(avg_arr_delay_df, airports, join_by(dest == faa)) |> 
+  select(avg_arr_delay, name) |> 
+  slice_max(avg_arr_delay)
 ```
 
 
@@ -94,8 +123,8 @@ What is the average departure delay for each airline? To answer this with someth
 
 ```{r}
 
-
-````
+## get rid of one of the tick marks below - should be 3
+``` 
 
 Which airline had the smallest average departure delay? 
 
